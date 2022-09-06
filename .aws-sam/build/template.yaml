@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  FetchNSend:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: FetchNSend
+      Handler: lambda.lambda_handler
+      Runtime: python3.9
+      Architectures:
+      - x86_64
+      Events:
+        SQSMessageReceived:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - SQSQueue
+              - Arn
+            BatchSize: 1
+      Role: arn:aws:iam::016360662315:role/lambda_sns_role
+      Policies:
+      - SNSCrudPolicy:
+          TopicName: '*'
+      - SQSPollerPolicy:
+          QueueName: SendMailQueue
+    DependsOn:
+    - SNSTopicEMail
+    Metadata:
+      SamResourceId: FetchNSend
+  SQSQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: SendMailQueue
+      DelaySeconds: 1
+  SQSPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: SQS-SAM-Policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: sqs:*
+          Resource: '*'
+      Roles:
+      - Ref: SAMSQSRole
+  SAMSQSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - sqs.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+  SNSTopicEMail:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: send_mail
+      DisplayName: send_mail
+      Subscription:
+      - Endpoint: rojenarda.2001@gmail.com
+        Protocol: email
+      Tags:
+      - Key: name
+        Value: send_mail
+  MQTTRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: send_sqs_message
+      TopicRulePayload:
+        AwsIotSqlVersion: '2016-03-23'
+        Sql: SELECT * FROM "sendmail/rojenarda.2001@gmail.com"
+        Actions:
+        - Sqs:
+            QueueUrl:
+              Ref: SQSQueue
+            RoleArn: arn:aws:iam::016360662315:role/iot_sqs_role
+    DependsOn:
+    - SAMSQSRole
